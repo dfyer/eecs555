@@ -1,0 +1,313 @@
+/* Hangyu Park 2009-11722 fjii789@gmail.com/gominidive@hotmail.com */
+/*
+ * Create a .jj file, e.g. select.jj, using the information in the Tutorial
+ * and run it by following the steps below:
+ *
+ * > javacc select.jj
+ * > javac Select.java  (or javac *.java)
+ * > java Select
+ *
+ * Here is a sample run:
+ *
+ * alee$ javacc select.jj
+ * Java Compiler Compiler Version 5.0 (Parser Generator)
+ * (type "javacc" with no arguments for help)
+ * Reading from file select.jj . . .
+ * File "TokenMgrError.java" is being rebuilt.
+ * File "ParseException.java" is being rebuilt.
+ * File "Token.java" is being rebuilt.
+ * File "SimpleCharStream.java" is being rebuilt.
+ * Parser generated successfully.
+ * alee$ javac Select.java
+ * java Select
+ * select *
+ *     -> select *
+ * select: *
+ * from: null
+ * where: null
+ * alee$ 
+ */
+
+/* This can be used as a starting point for parsing SELECT statements.
+ * This version handles only "select *".
+ *
+ * Ask them to expand this to handle "select <attrs> from <attrs> where <exp>",
+ * only the parsing aspects, not including the semantics of the select command.
+ */
+
+
+/* Options and class declaration */
+options {
+}
+
+PARSER_BEGIN(Select)
+    import java.io.*;
+
+    public class Select {
+        public static void main(String[] args)
+            throws ParseException, TokenMgrError {
+			System.out.println("SDBS v1.1");
+			Select parser = new Select(System.in);
+
+			// Some initial statements to help debugging
+			System.out.println("Initializing databases.. ");
+			DBMS dbms = new DBMS();
+			try {
+				BufferedReader br = new BufferedReader(new FileReader("init.sql"));
+				String line = null;
+				while((line = br.readLine()) != null) {
+					System.out.println(line);
+					parser.ReInit(new ByteArrayInputStream(line.getBytes("UTF-8")));
+					dbms.executeStatement(parser.Start());				}
+				br.close();
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+			// Shell(?) starts from here
+			parser.ReInit(System.in);
+			while(true){
+				Statement stmt = parser.Start();
+				if(stmt != null)
+					dbms.executeStatement(stmt);
+				else
+					break; // Exit
+			}
+        }
+
+    }
+PARSER_END(Select)
+
+
+/* Specifying a lexical analyzer using regular expression productions */
+
+SKIP:
+{
+  " "
+| "\t"
+| "\r"
+| "\n"
+}
+
+TOKEN: { < ENDOFSTATEMENT: ";" > }TOKEN: { < STAR: "*" > }
+TOKEN: { < EQUAL: "=" > }
+TOKEN: { < POINT: "." > }
+TOKEN:{  < OBRA: ("(")+ >
+| < CBRA: (")")+ >
+| < COMMA: "," >}
+TOKEN:{
+  < SELECT: "select" | "SELECT" | "Select" >
+| < FROM: "from" | "FROM" | "From" >
+| < WHERE: "where" | "WHERE" | "Where" >
+| < CREATE: "create" | "CREATE" | "Create" >
+| < DATABASE: "database" | "DATABASE" | "Database" >
+| < TABLE: "table" | "TABLE" | "Table" >
+| < USE: "use" | "USE" | "Use" >
+| < SHOW: "show" | "SHOW" | "Show" >
+| < DATABASES: "databases" | "DATABASES" | "Databases" >
+| < INSERT: "insert" | "INSERT" | "Insert" >
+| < INTO: "into" | "INTO" | "Into" >
+| < VALUES: "values" | "VALUES" | "Values" >
+| < UPDATE: "update" | "UPDATE" | "Update" >
+| < SET: "set" | "SET" | "Set" >
+| < EXIT: "exit" | "EXIT" | "Exit" >
+}
+
+TOKEN:
+{
+  < #CHAR: ["a"-"z", "A"-"Z"] >
+| < #NUMCHAR: ["0"-"9", "a"-"z", "A"-"Z"] >
+| < #DIGIT: ["0"-"9"] >
+}
+
+TOKEN:{
+  < ATTR: (< CHAR >)(< NUMCHAR >)* >
+| < VALUE: (< NUMCHAR >)+ >
+| < NUMBER: (< DIGIT >)+< POINT >(< DIGIT >)+ >
+}
+
+/* Specifying the parser using BNF productions */
+/* The input to the parser consists of a single statement so far:
+ *     Start --> Statement
+ */
+
+Statement Start():
+{
+    Statement stmt;
+}
+{
+    {
+        stmt = ParseStatement();
+        /*printStream.println("select: " + stmt.select);
+        printStream.println("from: " + stmt.from); 
+        printStream.println("where: " + stmt.where);*/
+        return stmt;
+    }
+}
+
+
+
+/* A Statement so far is defined as follows:
+ *
+ *    Statement --> select *
+ *               |  Select *
+ *               |  SELECT *
+ */
+
+Statement ParseStatement():
+{
+    Token t;
+}
+{
+    (
+      < CREATE >
+      (        < DATABASE >
+        { CreateDatabaseStatement cds = new CreateDatabaseStatement(); }
+        t = < ATTR >
+          { cds.dbname = t.image; }
+        < ENDOFSTATEMENT >
+        { return cds; }
+        |
+        < TABLE >
+        { CreateTableStatement cts = new CreateTableStatement(); }
+        t = < ATTR >
+        { cts.tableName = t.image; } 
+        < OBRA >
+        (
+          t = < ATTR >
+          { String name = t.image; }
+          t = < ATTR >
+          { String type = t.image; cts.add(name, type); }
+        )
+        (
+          < COMMA >
+          t = < ATTR >
+          { name = t.image; }
+          t = < ATTR >
+          { type = t.image; cts.add(name, type); }
+        )*
+        < CBRA >
+        < ENDOFSTATEMENT >
+        { return cts; }
+      )
+    ) |
+    (
+      < INSERT >      { InsertStatement is = new InsertStatement(); }
+      < INTO >
+      t = < ATTR >
+      { is.tableName = t.image; }
+      < VALUES >
+      < OBRA >
+      (
+        t = < VALUE >
+        { is.add(t.image); }
+      | t = < ATTR >
+        { is.add(t.image); }
+      | t = < NUMBER >
+        { is.add(t.image); }
+      )
+      (
+        < COMMA >
+        (          t = < VALUE >
+          { is.add(t.image); }
+        | t = < ATTR >
+          { is.add(t.image); }
+        | t = < NUMBER >
+          { is.add(t.image); }
+        )
+      )*
+      < CBRA >
+      < ENDOFSTATEMENT >
+      { return is; }    ) |
+    (
+      < UPDATE >
+      { UpdateStatement ups = new UpdateStatement(); }
+	  t = < ATTR >
+	  { ups.tableName = t.image; } 
+      < SET >
+      t = < ATTR >
+	  { ups.attr = t.image; }
+	  < EQUAL >
+	  (
+        t = < VALUE >
+        { ups.val = t.image; }
+      | t = < ATTR >
+        { ups.val = t.image; }
+      | t = < NUMBER >
+        { ups.val = t.image; }
+      )
+	  [
+	    < WHERE >
+        t = < ATTR >
+		{ String left = t.image; }
+		t = < EQUAL >
+		{ String operator = t.image; }
+		{ String right = ""; }
+		(		  t = < VALUE >
+		  { right += t.image; }
+		  { ups.where = new ConditionExpression(left, operator, right); }
+		| t = < ATTR >
+		  { right += t.image; }
+		  { ups.where = new ConditionExpression(left, operator, right); }
+		| t = < NUMBER >
+		  { right += t.image; }
+		  { ups.where = new ConditionExpression(left, operator, right); }
+		)
+	  ]
+	  < ENDOFSTATEMENT >
+	  { return ups; }    ) |
+    (
+      < USE >
+      { UseStatement us = new UseStatement(); }
+      t = < ATTR >
+      { us.dbname = t.image; }
+      < ENDOFSTATEMENT >
+      { return us; }    ) |
+    (
+      < SHOW >
+      < DATABASES >
+      { Statement showdbs = new Statement("SHOW DATABASES"); }
+      < ENDOFSTATEMENT >
+      { return showdbs; }    ) |
+    (      <SELECT>
+      { SelectStatement ss = new SelectStatement(); }      (        t = <STAR>
+        { ss.addProjection(t.image); }
+        |
+        (          t = < ATTR >
+          { ss.addProjection(t.image); }
+        )
+        (
+          < COMMA >
+          t = < ATTR >
+          { ss.addProjection(t.image); }        )* 
+      )
+      <FROM>
+      t = <ATTR>
+      { ss.from = t.image; }
+      [
+        < WHERE >
+        t = < ATTR >
+		{ String left =  t.image; }
+		t = < EQUAL >
+		{ String operator = t.image; }
+		{ String right = ""; }
+		(
+		  t = < VALUE >
+		  { right += t.image; }
+		  { ss.where = new ConditionExpression(left, operator, right); }
+		| t = < ATTR >
+		  { right += t.image; }
+		  { ss.where = new ConditionExpression(left, operator, right); }
+		| t = < NUMBER >
+		  { right += t.image; }
+		  { ss.where = new ConditionExpression(left, operator, right); }
+		)	  ]
+      < ENDOFSTATEMENT >
+      { return ss; }
+    ) |
+    (      < EXIT >
+      < ENDOFSTATEMENT >
+      { return null; }
+    )
+}
