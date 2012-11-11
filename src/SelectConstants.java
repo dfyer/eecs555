@@ -13,9 +13,9 @@ public interface SelectConstants {
   /** RegularExpression Id. */
   int STAR = 6;
   /** RegularExpression Id. */
-  int EQUAL = 7;
+  int POINT = 7;
   /** RegularExpression Id. */
-  int POINT = 8;
+  int CONDOPERATOR = 8;
   /** RegularExpression Id. */
   int OBRA = 9;
   /** RegularExpression Id. */
@@ -53,17 +53,19 @@ public interface SelectConstants {
   /** RegularExpression Id. */
   int EXIT = 26;
   /** RegularExpression Id. */
-  int CHAR = 27;
+  int AND = 27;
   /** RegularExpression Id. */
-  int NUMCHAR = 28;
+  int CHAR = 28;
   /** RegularExpression Id. */
-  int DIGIT = 29;
+  int NUMCHAR = 29;
   /** RegularExpression Id. */
-  int ATTR = 30;
+  int DIGIT = 30;
   /** RegularExpression Id. */
-  int VALUE = 31;
+  int ATTR = 31;
   /** RegularExpression Id. */
-  int NUMBER = 32;
+  int VALUE = 32;
+  /** RegularExpression Id. */
+  int NUMBER = 33;
 
   /** Lexical state. */
   int DEFAULT = 0;
@@ -77,8 +79,8 @@ public interface SelectConstants {
     "\"\\n\"",
     "\";\"",
     "\"*\"",
-    "\"=\"",
     "\".\"",
+    "<CONDOPERATOR>",
     "<OBRA>",
     "<CBRA>",
     "\",\"",
@@ -97,6 +99,7 @@ public interface SelectConstants {
     "<UPDATE>",
     "<SET>",
     "<EXIT>",
+    "<AND>",
     "<CHAR>",
     "<NUMCHAR>",
     "<DIGIT>",

@@ -8,12 +8,12 @@ import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Member;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -176,16 +176,17 @@ public class DBMS {
 	        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 	        int compilationResult = compiler.run(null, null, null, fileToCompile);
 	        
-	        /*if (compilationResult == 0)
-	            System.out.println("successful");
-	        else
-	            System.out.println("failed");*/
-	        
-	        // Create a table
-	        Table t = new Table(cts.tableName);
-			DBUsing.addTable(cts.tableName, t);
-			
-			return true;
+	        if (compilationResult != 0) {
+	        	// Check for compilation
+	            System.out.println("failed");
+	            return false;
+	        }
+	        else {
+	        	// Create a table
+		        Table t = new Table(cts.tableName);
+				DBUsing.addTable(cts.tableName, t);
+				return true;
+	        }
 		}
 	}
 
@@ -203,9 +204,9 @@ public class DBMS {
 				File root = new File("src");
 	        	URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { root.toURI().toURL() });
 	        	//System.out.println("Created class loader with address: " + root.toURI().toURL().toString());
-	        	Class<?> tuple = Class.forName(t.getName(), true, classLoader);
+	        	Class<?> cl = Class.forName(t.getName(), true, classLoader);
 	        	//System.out.println("Inserting a tuple to " + t.getName());
-				Field fields[] = tuple.getDeclaredFields();
+				Field fields[] = cl.getDeclaredFields();
 				Class<?> parTypes[] = new Class[fields.length];
 				for(int i = 0; i < fields.length; i++)
 					parTypes[i] = fields[i].getType();
@@ -216,7 +217,7 @@ public class DBMS {
 				}
 				
 				Object argList[] = new Object[fields.length];
-				Constructor<?> ct = tuple.getConstructor(parTypes);
+				Constructor<?> ct = cl.getConstructor(parTypes);
 				
 				for(int i = 0; i < fields.length; i++) {
 					String typeName = parTypes[i].getName();
@@ -263,10 +264,10 @@ public class DBMS {
 		try {
 			File root = new File("src");
         	URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { root.toURI().toURL() });
-        	Class<?> t = Class.forName(target.getName(), true, classLoader);
+        	Class<?> cl = Class.forName(target.getName(), true, classLoader);
 			
 			// Clarify update targets
-			for(Field field : t.getDeclaredFields()) {
+			for(Field field : cl.getDeclaredFields()) {
 				field.setAccessible(true);
 				if(field.getType().getName().equals("int"))
 					updateValue = new Integer(us.val);
@@ -286,7 +287,7 @@ public class DBMS {
 				String attributeValue = cond.right;
 				
 				for(Tuple tuple : tuples) {
-					Field fields[] = t.getDeclaredFields();
+					Field fields[] = tuple.getClass().getDeclaredFields();
 					for(int i = 0; i <  fields.length; i++) {
 						Field field = fields[i];
 						field.setAccessible(true);
@@ -303,7 +304,7 @@ public class DBMS {
 									checkCondition = ((Object) new Double(attributeValue)).equals(field.get(tuple));
 								
 								if(checkCondition) {
-									Field toBeUpdated = t.getDeclaredField(us.attr);
+									Field toBeUpdated = tuple.getClass().getDeclaredField(us.attr);
 									toBeUpdated.setAccessible(true);
 									toBeUpdated.set(tuple, updateValue);
 								}
@@ -315,7 +316,7 @@ public class DBMS {
 			}
 			else {
 				for(Tuple tuple : tuples) {
-					Field toBeUpdated = t.getDeclaredField(us.attr);
+					Field toBeUpdated = tuple.getClass().getDeclaredField(us.attr);
 					toBeUpdated.setAccessible(true);
 					toBeUpdated.set(tuple, updateValue);
 					toBeUpdated.setAccessible(false);
@@ -342,88 +343,223 @@ public class DBMS {
 	
 	// SELECT
 	private boolean select(SelectStatement ss) {
-		Table target = DBUsing.getTable(ss.from);
-		ArrayList<Tuple> results;
-		ArrayList<String> projections = new ArrayList<String>();
+		// Get tables from table names
+		ArrayList<Table> tables = new ArrayList<Table>();
+		for(String tableName : ss.relations)
+			tables.add(DBUsing.getTable(tableName));
 		
-		try {
-			File root = new File("src");
-        	URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { root.toURI().toURL() });
-        	Class<?> t = Class.forName(target.getName(), true, classLoader);
-			
-			// Filtering
-			if(ss.where != null) {
-				results = new ArrayList<Tuple>();
-				ArrayList<Tuple> tuples = (ArrayList<Tuple>) target.getTuples();
-				ConditionExpression cond = ss.where;
-				String attributeName = cond.left;
-				String attributeValue = cond.right;
-				
-				for(Tuple tuple : tuples) {
-					Field fields[] = t.getDeclaredFields();
-					for(int i = 0; i <  fields.length; i++) {
-						Field field = fields[i];
-						field.setAccessible(true);
-						//System.out.println("check field.getName(): " + field.getName() + ", attributeName: " + attributeName);
-						if(field.getName().equals(attributeName)) {
-							if(cond.operator.equals("=")) {
-								boolean checkCondition = false;
-								if(field.getType().getName().equals("int"))
-									checkCondition = ((Object) new Integer(attributeValue)).equals(field.get(tuple));
-								else if(field.getType().getName().equals("java.lang.String"))
-									checkCondition = ((Object) new String(attributeValue)).equals(field.get(tuple));
-								else if(field.getType().getName().equals("double"))
-									checkCondition = ((Object) new Double(attributeValue)).equals(field.get(tuple));
-									
-								if(checkCondition)
-									results.add(tuple);
-							}
-						}
-						field.setAccessible(false);
-					}
-				}
-			}
-			else
-				results = (ArrayList<Tuple>) target.getTuples();
-			
-			// Projection
-			if(ss.select.get(0).equals("*"))
-				for(Field field : t.getDeclaredFields())
-					projections.add(field.getName());
-			else
-				projections.addAll(ss.select);
-			
-			// Print
-			StringBuilder sb = new StringBuilder();
-			String newLine = System.getProperty("line.separator");
-			for(Field field : t.getDeclaredFields()) {
-				if(projections.contains(field.getName()))
-				sb.append("\t" + field.getName());
+		// Get first intermediate result(which is either a table or an intermediate result from two or more joined tables)
+		ArrayList<String> attributeNames = getJoinedAttributeNames(tables);
+		ArrayList<ArrayList<Object>> intermediate = getJoinedIntermediate(tables);
+		
+		// Selection
+		if(!ss.conditions.isEmpty())
+			intermediate = getSelectedIntermediate(intermediate, attributeNames, ss.conditions);
+		
+		// Projection
+		ArrayList<String> printedNames = getProjectedNames(intermediate, attributeNames, ss.attributes);
+		intermediate = getProjectedIntermediate(intermediate, attributeNames, ss.attributes);
+		
+		// Print
+		StringBuilder sb = new StringBuilder();
+		String newLine = System.getProperty("line.separator");
+		for(String name : printedNames) {
+			sb.append("\t" + name);
+		}
+		sb.append(newLine);
+		for(ArrayList<Object> objectTuple : intermediate) {
+			for(int i = 0; i <  objectTuple.size(); i++) {
+				sb.append("\t" + objectTuple.get(i));
 			}
 			sb.append(newLine);
-			for(Tuple tuple : results) {
-				Field fields[] = t.getDeclaredFields();
+		}
+		System.out.println(sb.toString());
+		
+		return true;
+	}
+	
+	/*
+	 * Get attribute names for the joined table
+	 */
+	private ArrayList<String> getJoinedAttributeNames(List<Table> tables) {
+		ArrayList<String> rtn = new ArrayList<String>(); 
+
+		try {
+			for(int iterator = 0; iterator < tables.size(); iterator++) {
+				Table table = tables.get(iterator);
+				File root = new File("src");
+				URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { root.toURI().toURL() });
+				Class<?> cl = Class.forName(table.getName(), true, classLoader);
+				
+				Field fields[] = cl.getDeclaredFields();
 				for(int i = 0; i <  fields.length; i++) {
 					Field field = fields[i];
 					field.setAccessible(true);
-					if(projections.contains(field.getName()))
-						sb.append("\t" + field.get(tuple));
+					rtn.add(field.getName());
 					field.setAccessible(false);
 				}
-				sb.append(newLine);
 			}
-			System.out.println(sb.toString());
-		}
-		catch (IllegalAccessException e){
-			e.printStackTrace();
 		}
 		catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
-		catch (MalformedURLException e) {
+		catch (MalformedURLException e)	{
 			e.printStackTrace();
 		}
 		
-		return true;
+		return rtn;
+	}
+	
+	/*
+	 * Returns joined table or just a table
+	 */
+	private ArrayList<ArrayList<Object>> getJoinedIntermediate(List<Table> tables) {
+		ArrayList<ArrayList<Object>> rtn = new ArrayList<ArrayList<Object>>(); 
+
+		try {
+			for(int iterator = 0; iterator < tables.size(); iterator++) {
+				Table table = tables.get(iterator);
+				if(rtn.isEmpty()) {					
+					ArrayList<Tuple> tuples = (ArrayList<Tuple>) table.getTuples();
+					for(Tuple tuple : tuples) {
+						ArrayList<Object> objectTuple = new ArrayList<Object>();
+						
+						Field fields[] = tuple.getClass().getDeclaredFields();
+						for(int i = 0; i <  fields.length; i++) {
+							Field field = fields[i];
+							field.setAccessible(true);
+							objectTuple.add(field.get(tuple));
+							field.setAccessible(false);
+						}
+						
+						rtn.add(objectTuple);
+					}
+				}
+				else {
+					int originalTableSize = rtn.size();
+					
+					// Copy existing tuples for join
+					for(int j = 0; j < tables.size() - 1; j++)
+						for(int i = 0; i < originalTableSize; i++)
+							rtn.add(rtn.get(i));
+					
+					// Join
+					ArrayList<Tuple> tuples = (ArrayList<Tuple>) table.getTuples();
+					int offset = 0;
+					for(Tuple tuple : tuples) {
+						for(int iter = offset * originalTableSize; iter < (offset + 1) * originalTableSize; iter++) {
+							ArrayList<Object> objectTuple = rtn.get(iter);
+							
+							Field fields[] = tuple.getClass().getDeclaredFields();
+							for(int i = 0; i <  fields.length; i++) {
+								Field field = fields[i];
+								field.setAccessible(true);
+								objectTuple.add(field.get(tuple));
+								field.setAccessible(false);
+							}
+							
+							rtn.add(objectTuple);
+						}
+						offset++;
+					}
+				}
+			}
+		}
+		catch (IllegalAccessException e) {
+			e.printStackTrace();
+		}
+		/*catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		catch (MalformedURLException e)	{
+			e.printStackTrace();
+		}*/
+		
+		return rtn;
+	}
+
+	/*
+	 * Selection
+	 */
+	private ArrayList<ArrayList<Object>> getSelectedIntermediate(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<ConditionExpression> conditions) {
+		ArrayList<ArrayList<Object>> rtn = new ArrayList<ArrayList<Object>>();
+		
+		ArrayList<String> leftNames = new ArrayList<String>();
+		ArrayList<String> condOperators = new ArrayList<String>();
+		ArrayList<String> rightValues = new ArrayList<String>();
+		for(ConditionExpression cond : conditions) {
+			leftNames.add(cond.left);
+			condOperators.add(cond.operator);
+			rightValues.add(cond.right);
+		}
+
+		for(ArrayList<Object> objectTuple : intermediate) {
+			for(int i = 0; i <  objectTuple.size(); i++) {
+				int index = leftNames.indexOf(attributeNames.get(i));
+				if(index >= 0) {
+					if(condOperators.get(index).equals("="))
+						if(rightValues.get(index).equals(objectTuple.get(index)))
+							rtn.add(objectTuple);
+					else if(condOperators.get(index).equals("<")) {
+						boolean checkCondition = false;
+						if(objectTuple.get(index).getClass().getName().equals("int"))
+							checkCondition = (Integer) objectTuple.get(index) < Integer.parseInt(rightValues.get(index));
+						else if(objectTuple.get(index).getClass().getName().equals("double"))
+							checkCondition = (Double) objectTuple.get(index) < Double.parseDouble(rightValues.get(index));
+						if(checkCondition)
+							rtn.add(objectTuple);
+					}
+					else if(condOperators.get(index).equals(">")) {
+						boolean checkCondition = false;
+						if(objectTuple.get(index).getClass().getName().equals("int"))
+							checkCondition = (Integer) objectTuple.get(index) > Integer.parseInt(rightValues.get(index));
+						else if(objectTuple.get(index).getClass().getName().equals("double"))
+							checkCondition = (Double) objectTuple.get(index) > Double.parseDouble(rightValues.get(index));
+						if(checkCondition)
+							rtn.add(objectTuple);
+					}
+				}
+			}
+		}
+		
+		return rtn;
+	}
+	
+	private ArrayList<String> getProjectedNames(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<String> projectionNames) {
+		ArrayList<String> rtn = new ArrayList<String>();
+		ArrayList<Integer> indexes = new ArrayList<Integer>();
+		
+		for(String proj : projectionNames)
+			if(attributeNames.contains(proj))
+				indexes.add(attributeNames.indexOf(proj));
+		
+		for(int i = 0; i <  indexes.size(); i++) {
+			rtn.add(attributeNames.get(indexes.get(i)));
+		}
+		
+		return rtn;
+	}
+	
+	private ArrayList<ArrayList<Object>> getProjectedIntermediate(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<String> projectionNames) {
+		if(projectionNames.get(0).equals("*"))
+			return intermediate;
+		else {
+			ArrayList<ArrayList<Object>> rtn = new ArrayList<ArrayList<Object>>();
+			ArrayList<Integer> indexes = new ArrayList<Integer>();
+			
+			for(String proj : projectionNames)
+				if(attributeNames.contains(proj))
+					indexes.add(attributeNames.indexOf(proj));
+			
+			for(ArrayList<Object> objectTuple : intermediate) {
+				ArrayList<Object> newObjectTuple = new ArrayList<Object>();
+				for(int i = 0; i <  indexes.size(); i++) {
+					newObjectTuple.add(objectTuple.get(indexes.get(i)));
+				}
+				rtn.add(newObjectTuple);
+			}
+			
+			return rtn;
+		}
 	}
 }

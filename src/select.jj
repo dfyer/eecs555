@@ -46,7 +46,7 @@ PARSER_BEGIN(Select)
     public class Select {
         public static void main(String[] args)
             throws ParseException, TokenMgrError {
-			System.out.println("SDBS v1.1");
+			System.out.println("SDBS v1.2");
 			Select parser = new Select(System.in);
 
 			// Some initial statements to help debugging
@@ -91,8 +91,10 @@ SKIP:
 }
 
 TOKEN: { < ENDOFSTATEMENT: ";" > }TOKEN: { < STAR: "*" > }
-TOKEN: { < EQUAL: "=" > }
 TOKEN: { < POINT: "." > }
+TOKEN:{
+  < CONDOPERATOR: "=" | "<" | ">" >
+}
 TOKEN:{  < OBRA: ("(")+ >
 | < CBRA: (")")+ >
 | < COMMA: "," >}
@@ -112,6 +114,7 @@ TOKEN:{
 | < UPDATE: "update" | "UPDATE" | "Update" >
 | < SET: "set" | "SET" | "Set" >
 | < EXIT: "exit" | "EXIT" | "Exit" >
+| < AND: "and" | "AND" | "And" >
 }
 
 TOKEN:
@@ -228,7 +231,7 @@ Statement ParseStatement():
       < SET >
       t = < ATTR >
 	  { ups.attr = t.image; }
-	  < EQUAL >
+	  < CONDOPERATOR >
 	  (
         t = < VALUE >
         { ups.val = t.image; }
@@ -241,7 +244,7 @@ Statement ParseStatement():
 	    < WHERE >
         t = < ATTR >
 		{ String left = t.image; }
-		t = < EQUAL >
+		t = < CONDOPERATOR >
 		{ String operator = t.image; }
 		{ String right = ""; }
 		(		  t = < VALUE >
@@ -272,37 +275,61 @@ Statement ParseStatement():
       { return showdbs; }    ) |
     (      <SELECT>
       { SelectStatement ss = new SelectStatement(); }      (        t = <STAR>
-        { ss.addProjection(t.image); }
+        { ss.addAttribute(t.image); }
         |
         (          t = < ATTR >
-          { ss.addProjection(t.image); }
+          { ss.addAttribute(t.image); }
         )
         (
           < COMMA >
           t = < ATTR >
-          { ss.addProjection(t.image); }        )* 
+          { ss.addAttribute(t.image); }        )* 
       )
       <FROM>
-      t = <ATTR>
-      { ss.from = t.image; }
+      (        t = <ATTR>
+        { ss.addRelation(t.image); }
+      )
+      (        < COMMA >
+        t = < ATTR >
+        { ss.addRelation(t.image); }
+      )*
       [
         < WHERE >
-        t = < ATTR >
-		{ String left =  t.image; }
-		t = < EQUAL >
-		{ String operator = t.image; }
-		{ String right = ""; }
+        (          t = < ATTR >
+		  { String left =  t.image; }
+	  	  t = < CONDOPERATOR >
+		  { String operator = t.image; }
+		  { String right = ""; }
+  		  (  		    t = < VALUE >
+		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+          | t = < ATTR >
+  		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+	      | t = < NUMBER >
+		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+		  )
+        )
 		(
-		  t = < VALUE >
-		  { right += t.image; }
-		  { ss.where = new ConditionExpression(left, operator, right); }
-		| t = < ATTR >
-		  { right += t.image; }
-		  { ss.where = new ConditionExpression(left, operator, right); }
-		| t = < NUMBER >
-		  { right += t.image; }
-		  { ss.where = new ConditionExpression(left, operator, right); }
-		)	  ]
+		  < AND >
+          t = < ATTR >
+		  { left =  t.image; }
+	  	  t = < CONDOPERATOR >
+		  { operator = t.image; }
+		  { right = ""; }
+  		  (
+  		    t = < VALUE >
+		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+          | t = < ATTR >
+  		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+	      | t = < NUMBER >
+		    { right += t.image; }
+		    { ss.addCondition(new ConditionExpression(left, operator, right)); }
+		  )
+		)*	  ]
       < ENDOFSTATEMENT >
       { return ss; }
     ) |

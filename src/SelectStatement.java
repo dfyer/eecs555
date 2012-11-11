@@ -4,30 +4,40 @@ import java.util.ArrayList;
 
 public class SelectStatement extends Statement{
 
-    protected ArrayList<String> select;
-    protected String from;
-    protected ConditionExpression where;
+    protected ArrayList<String> attributes;
+    protected ArrayList<String> relations;
+    protected ArrayList<ConditionExpression> conditions;
 
     public SelectStatement () {
     	this.type = "SELECT";
-        this.select = new ArrayList<String>();
-        this.from = null;
-        this.where = null;
+        this.attributes = new ArrayList<String>();
+        this.relations = new ArrayList<String>();
+        this.conditions = new ArrayList<ConditionExpression>();
     }
     
+    /* deprecated
     public SelectStatement (String select, String from, String where) {
     	this.type = "SELECT";
-        this.select = new ArrayList<String>();
-        this.select.add(select);
-        this.from = from;
-        this.where = new ConditionExpression(where);
-    }
+        this.attributes = new ArrayList<String>();
+        this.attributes.add(select);
+        this.relations = new ArrayList<String>();
+        this.relations.add(from);
+        this.conditions = new ConditionExpression(where);
+    }*/
     
-    public void addProjection(String select) {
-    	if(this.select.contains("*"))
+    public void addAttribute(String select) {
+    	if(this.attributes.contains("*"))
     		return;
     	else if(select.equals("*"))
-	    	this.select.clear();
-	    this.select.add(select);	
+	    	this.attributes.clear();
+	    this.attributes.add(select);	
+    }
+    
+    public void addRelation(String from) {
+	    this.relations.add(from);	
+    }
+    
+    public void addCondition(ConditionExpression where) {
+    	this.conditions.add(where);
     }
 }
