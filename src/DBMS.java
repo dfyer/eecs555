@@ -278,7 +278,7 @@ public class DBMS {
 				field.setAccessible(false);
 			}
 			
-			System.out.println(us.attr + " " + updateValue);
+			//System.out.println(us.attr + " " + updateValue);
 			
 			// Filter and update
 			if(us.where != null) {
@@ -338,6 +338,8 @@ public class DBMS {
 			e.printStackTrace();
 		}
 		
+		System.out.println();
+		
 		return true;
 	}
 	
@@ -361,19 +363,23 @@ public class DBMS {
 		intermediate = getProjectedIntermediate(intermediate, attributeNames, ss.attributes);
 		
 		// Print
-		StringBuilder sb = new StringBuilder();
-		String newLine = System.getProperty("line.separator");
-		for(String name : printedNames) {
-			sb.append("\t" + name);
-		}
-		sb.append(newLine);
-		for(ArrayList<Object> objectTuple : intermediate) {
-			for(int i = 0; i <  objectTuple.size(); i++) {
-				sb.append("\t" + objectTuple.get(i));
+		if(intermediate.isEmpty())
+			System.out.println();
+		else {
+			StringBuilder sb = new StringBuilder();
+			String newLine = System.getProperty("line.separator");
+			for(String name : printedNames) {
+				sb.append("\t" + name);
 			}
 			sb.append(newLine);
+			for(ArrayList<Object> objectTuple : intermediate) {
+				for(int i = 0; i <  objectTuple.size(); i++) {
+					sb.append("\t" + objectTuple.get(i));
+				}
+				sb.append(newLine);
+			}
+			System.out.println(sb.toString());
 		}
-		System.out.println(sb.toString());
 		
 		return true;
 	}
@@ -497,23 +503,31 @@ public class DBMS {
 			for(int i = 0; i <  objectTuple.size(); i++) {
 				int index = leftNames.indexOf(attributeNames.get(i));
 				if(index >= 0) {
-					if(condOperators.get(index).equals("="))
-						if(rightValues.get(index).equals(objectTuple.get(index)))
+					if(condOperators.get(index).equals("=")) {
+						boolean checkCondition = false;
+						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
+							checkCondition = (Integer) objectTuple.get(index) == Integer.parseInt(rightValues.get(index));
+						else if(objectTuple.get(index).getClass().getName().equals("java.lang.String"))
+							checkCondition = (Double) objectTuple.get(index) == Double.parseDouble(rightValues.get(index));
+						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
+							checkCondition = (Double) objectTuple.get(index) == Double.parseDouble(rightValues.get(index));
+						if(checkCondition)
 							rtn.add(objectTuple);
+					}
 					else if(condOperators.get(index).equals("<")) {
 						boolean checkCondition = false;
-						if(objectTuple.get(index).getClass().getName().equals("int"))
+						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
 							checkCondition = (Integer) objectTuple.get(index) < Integer.parseInt(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("double"))
+						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
 							checkCondition = (Double) objectTuple.get(index) < Double.parseDouble(rightValues.get(index));
 						if(checkCondition)
 							rtn.add(objectTuple);
 					}
 					else if(condOperators.get(index).equals(">")) {
 						boolean checkCondition = false;
-						if(objectTuple.get(index).getClass().getName().equals("int"))
+						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
 							checkCondition = (Integer) objectTuple.get(index) > Integer.parseInt(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("double"))
+						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
 							checkCondition = (Double) objectTuple.get(index) > Double.parseDouble(rightValues.get(index));
 						if(checkCondition)
 							rtn.add(objectTuple);
@@ -526,18 +540,22 @@ public class DBMS {
 	}
 	
 	private ArrayList<String> getProjectedNames(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<String> projectionNames) {
-		ArrayList<String> rtn = new ArrayList<String>();
-		ArrayList<Integer> indexes = new ArrayList<Integer>();
-		
-		for(String proj : projectionNames)
-			if(attributeNames.contains(proj))
-				indexes.add(attributeNames.indexOf(proj));
-		
-		for(int i = 0; i <  indexes.size(); i++) {
-			rtn.add(attributeNames.get(indexes.get(i)));
+		if(projectionNames.get(0).equals("*"))
+			return attributeNames;
+		else {
+			ArrayList<String> rtn = new ArrayList<String>();
+			ArrayList<Integer> indexes = new ArrayList<Integer>();
+			
+			for(String proj : projectionNames)
+				if(attributeNames.contains(proj))
+					indexes.add(attributeNames.indexOf(proj));
+			
+			for(int i = 0; i <  indexes.size(); i++) {
+				rtn.add(attributeNames.get(indexes.get(i)));
+			}
+			
+			return rtn;
 		}
-		
-		return rtn;
 	}
 	
 	private ArrayList<ArrayList<Object>> getProjectedIntermediate(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<String> projectionNames) {
