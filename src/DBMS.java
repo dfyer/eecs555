@@ -307,6 +307,7 @@ public class DBMS {
 									Field toBeUpdated = tuple.getClass().getDeclaredField(us.attr);
 									toBeUpdated.setAccessible(true);
 									toBeUpdated.set(tuple, updateValue);
+									toBeUpdated.setAccessible(false);
 								}
 							}
 						}
@@ -351,12 +352,17 @@ public class DBMS {
 			tables.add(DBUsing.getTable(tableName));
 		
 		// Get first intermediate result(which is either a table or an intermediate result from two or more joined tables)
+		// Get types too.
 		ArrayList<String> attributeNames = getJoinedAttributeNames(tables);
+		System.out.println(attributeNames);
+		ArrayList<String> attributeTypes = getJoinedAttributeTypes(tables);
+		System.out.println(attributeTypes);
 		ArrayList<ArrayList<Object>> intermediate = getJoinedIntermediate(tables);
 		
 		// Selection
 		if(!ss.conditions.isEmpty())
-			intermediate = getSelectedIntermediate(intermediate, attributeNames, ss.conditions);
+			for(int i = 0; i < ss.conditions.size(); i++)
+				intermediate = getSelectedIntermediate(intermediate, attributeNames, attributeTypes, ss.conditions.get(i));
 		
 		// Projection
 		ArrayList<String> printedNames = getProjectedNames(intermediate, attributeNames, ss.attributes);
@@ -417,6 +423,38 @@ public class DBMS {
 	}
 	
 	/*
+	 * Get attribute types for the joined table
+	 */
+	private ArrayList<String> getJoinedAttributeTypes(List<Table> tables) {
+		ArrayList<String> rtn = new ArrayList<String>(); 
+
+		try {
+			for(int iterator = 0; iterator < tables.size(); iterator++) {
+				Table table = tables.get(iterator);
+				File root = new File("src");
+				URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { root.toURI().toURL() });
+				Class<?> cl = Class.forName(table.getName(), true, classLoader);
+				
+				Field fields[] = cl.getDeclaredFields();
+				for(int i = 0; i <  fields.length; i++) {
+					Field field = fields[i];
+					field.setAccessible(true);
+					rtn.add(field.getType().getName());
+					field.setAccessible(false);
+				}
+			}
+		}
+		catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		catch (MalformedURLException e)	{
+			e.printStackTrace();
+		}
+		
+		return rtn;
+	}
+	
+	/*
 	 * Returns joined table or just a table
 	 */
 	private ArrayList<ArrayList<Object>> getJoinedIntermediate(List<Table> tables) {
@@ -443,30 +481,25 @@ public class DBMS {
 				}
 				else {
 					int originalTableSize = rtn.size();
+					ArrayList<Tuple> tuples = (ArrayList<Tuple>) table.getTuples();
 					
 					// Copy existing tuples for join
-					for(int j = 0; j < tables.size() - 1; j++)
+					for(int j = 0; j < tuples.size() - 1; j++)
 						for(int i = 0; i < originalTableSize; i++)
-							rtn.add(rtn.get(i));
+							rtn.add(new ArrayList<Object>(rtn.get(i)));
 					
 					// Join
-					ArrayList<Tuple> tuples = (ArrayList<Tuple>) table.getTuples();
-					int offset = 0;
-					for(Tuple tuple : tuples) {
-						for(int iter = offset * originalTableSize; iter < (offset + 1) * originalTableSize; iter++) {
-							ArrayList<Object> objectTuple = rtn.get(iter);
-							
-							Field fields[] = tuple.getClass().getDeclaredFields();
-							for(int i = 0; i <  fields.length; i++) {
-								Field field = fields[i];
+					for(int j = 0; j < tuples.size(); j++) {
+						Tuple tuple = tuples.get(j);
+						Field fields[] = tuple.getClass().getDeclaredFields();
+						for(int i = 0; i <  fields.length; i++) {
+							Field field = fields[i];
+							for(int iter = 0; iter < originalTableSize; iter++) {
 								field.setAccessible(true);
-								objectTuple.add(field.get(tuple));
+								rtn.get(j * originalTableSize + iter).add(field.get(tuple));
 								field.setAccessible(false);
 							}
-							
-							rtn.add(objectTuple);
 						}
-						offset++;
 					}
 				}
 			}
@@ -487,48 +520,41 @@ public class DBMS {
 	/*
 	 * Selection
 	 */
-	private ArrayList<ArrayList<Object>> getSelectedIntermediate(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<ConditionExpression> conditions) {
+	private ArrayList<ArrayList<Object>> getSelectedIntermediate(ArrayList<ArrayList<Object>> intermediate, ArrayList<String> attributeNames, ArrayList<String> attributeTypes, ConditionExpression condition) {
 		ArrayList<ArrayList<Object>> rtn = new ArrayList<ArrayList<Object>>();
-		
-		ArrayList<String> leftNames = new ArrayList<String>();
-		ArrayList<String> condOperators = new ArrayList<String>();
-		ArrayList<String> rightValues = new ArrayList<String>();
-		for(ConditionExpression cond : conditions) {
-			leftNames.add(cond.left);
-			condOperators.add(cond.operator);
-			rightValues.add(cond.right);
-		}
 
 		for(ArrayList<Object> objectTuple : intermediate) {
 			for(int i = 0; i <  objectTuple.size(); i++) {
-				int index = leftNames.indexOf(attributeNames.get(i));
-				if(index >= 0) {
-					if(condOperators.get(index).equals("=")) {
+				//System.out.println(objectTuple);
+				if(condition.left.equals(attributeNames.get(i))) {
+					//int index = leftNames.indexOf(attributeNames.get(i));
+					//System.out.println(objectTuple.get(attributeNames.indexOf(attributeNames.get(index))) + " " + rightValues.get(index));
+					if(condition.operator.equals("=")) {
 						boolean checkCondition = false;
-						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
-							checkCondition = (Integer) objectTuple.get(index) == Integer.parseInt(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("java.lang.String"))
-							checkCondition = (Double) objectTuple.get(index) == Double.parseDouble(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
-							checkCondition = (Double) objectTuple.get(index) == Double.parseDouble(rightValues.get(index));
+						if(attributeTypes.get(i).equals("int"))
+							checkCondition = (Integer) objectTuple.get(i) == Integer.parseInt(condition.right);
+						else if(attributeTypes.get(i).equals("java.lang.String"))
+							checkCondition = objectTuple.get(i).equals(condition.right);
+						else if(attributeTypes.get(i).equals("double"))
+							checkCondition = (Double) objectTuple.get(i) == Double.parseDouble(condition.right);
 						if(checkCondition)
 							rtn.add(objectTuple);
 					}
-					else if(condOperators.get(index).equals("<")) {
+					else if(condition.operator.equals("<")) {
 						boolean checkCondition = false;
-						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
-							checkCondition = (Integer) objectTuple.get(index) < Integer.parseInt(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
-							checkCondition = (Double) objectTuple.get(index) < Double.parseDouble(rightValues.get(index));
+						if(attributeTypes.get(i).equals("int"))
+							checkCondition = (Integer) objectTuple.get(i) < Integer.parseInt(condition.right);
+						else if(attributeTypes.get(i).equals("double"))
+							checkCondition = (Double) objectTuple.get(i) < Double.parseDouble(condition.right);
 						if(checkCondition)
 							rtn.add(objectTuple);
 					}
-					else if(condOperators.get(index).equals(">")) {
+					else if(condition.operator.equals(">")) {
 						boolean checkCondition = false;
-						if(objectTuple.get(index).getClass().getName().equals("java.lang.Integer"))
-							checkCondition = (Integer) objectTuple.get(index) > Integer.parseInt(rightValues.get(index));
-						else if(objectTuple.get(index).getClass().getName().equals("java.lang.Double"))
-							checkCondition = (Double) objectTuple.get(index) > Double.parseDouble(rightValues.get(index));
+						if(attributeTypes.get(i).equals("integer"))
+							checkCondition = (Integer) objectTuple.get(i) > Integer.parseInt(condition.right);
+						else if(attributeTypes.get(i).equals("double"))
+							checkCondition = (Double) objectTuple.get(i) > Double.parseDouble(condition.right);
 						if(checkCondition)
 							rtn.add(objectTuple);
 					}
